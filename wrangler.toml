@@ -1,0 +1,31 @@
+name = "sesame-notice"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = [
+  "*/30 23 * * *",    # JST 8:xx (UTC 23:00-23:40)
+  "*/30 0-13 * * *"   # JST 9:00-22:40 (UTC 0:00-13:40)
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sesame-notice"
+database_id = "6c024ae7-e7d2-41f0-93b5-a7e75fd0d686"
+migrations_dir = "drizzle"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

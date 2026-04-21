@@ -1,0 +1,25 @@
+{
+  "name": "sesame-notice",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create sesame-notice",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply sesame-notice --remote",
+    "db:migrate:local": "wrangler d1 migrations apply sesame-notice --local",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.7.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.7.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250409.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.10.0"
+  }
+}

@@ -1,0 +1,18 @@
+import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
+
+export const settings = sqliteTable("settings", {
+  id: integer("id").primaryKey().default(1),
+  sesame_api_key: text("sesame_api_key"),
+  device_uuid: text("device_uuid"),
+  line_token: text("line_token"),
+  line_channel_secret: text("line_channel_secret"),
+  line_target_id: text("line_target_id"),
+  line_target_type: text("line_target_type", { enum: ["user", "group"] }),
+  discord_webhook_url: text("discord_webhook_url"),
+  last_state: text("last_state", { enum: ["locked", "unlocked"] }),
+  last_timestamp: integer("last_timestamp"),
+  updated_at: text("updated_at"),
+});
+
+export type Settings = typeof settings.$inferSelect;
+export type SettingsPatch = Partial<Omit<typeof settings.$inferInsert, "id">>;
