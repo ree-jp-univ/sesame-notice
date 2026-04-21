@@ -3,8 +3,11 @@ import type { Env } from "../types";
 import { getSettings, updateSettings } from "../db";
 import { notifyDiscord } from "../notifiers/discord";
 import { notifyLine } from "../notifiers/line";
+import { deriveWebhookToken } from "../auth";
 
 export const webhookRoute = new Hono<{ Bindings: Env }>();
+
+const LOGIN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 function buildMessage(state: "locked" | "unlocked"): string {
   const now = new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
@@ -13,21 +16,32 @@ function buildMessage(state: "locked" | "unlocked"): string {
     : `🔓 鍵が開きました (${now})`;
 }
 
-// Sesame sends: GET /webhook?device_id={device_id}&state=locked|unlocked
-webhookRoute.get("/", async (c) => {
-  const state = c.req.query("state") as "locked" | "unlocked" | undefined;
+// Sesame sends: GET /webhook/:userId?token=<token>&state=locked|unlocked
+webhookRoute.get("/:userId", async (c) => {
+  const userId = c.req.param("userId");
 
+  const expectedToken = await deriveWebhookToken(userId, c.env.SERVER_SECRET);
+  if (c.req.query("token") !== expectedToken) {
+    return c.text("forbidden", 403);
+  }
+
+  const settings = await getSettings(c.env.DB, userId);
+
+  if (settings.last_login_at) {
+    const age = Date.now() - new Date(settings.last_login_at).getTime();
+    if (age > LOGIN_EXPIRY_MS) return c.text("paused", 200);
+  }
+
+  const state = c.req.query("state") as "locked" | "unlocked" | undefined;
   if (state !== "locked" && state !== "unlocked") {
     return c.text("invalid state", 400);
   }
-
-  const settings = await getSettings(c.env.DB);
 
   if (settings.last_state === state) {
     return c.text("no change", 200);
   }
 
-  await updateSettings(c.env.DB, { last_state: state });
+  await updateSettings(c.env.DB, userId, { last_state: state });
 
   const message = buildMessage(state);
   const results = await Promise.allSettled([

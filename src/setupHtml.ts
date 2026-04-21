@@ -14,7 +14,10 @@ export const setupHtml = `<!DOCTYPE html>
       padding: 24px 16px 48px;
     }
     .container { max-width: 640px; margin: 0 auto; }
-    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    h1 { font-size: 28px; font-weight: 700; }
+    .logout-link { font-size: 13px; color: #6e6e73; text-decoration: none; }
+    .logout-link:hover { color: #1d1d1f; }
     .subtitle { color: #6e6e73; font-size: 14px; margin-bottom: 32px; }
     .card {
       background: #fff;
@@ -103,11 +106,11 @@ export const setupHtml = `<!DOCTYPE html>
     .webhook-box {
       background: #f5f5f7;
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 10px 48px 10px 12px;
       font-size: 12px;
       font-family: monospace;
       word-break: break-all;
-      margin-top: 12px;
+      margin-top: 8px;
       position: relative;
     }
     .copy-btn {
@@ -155,11 +158,16 @@ export const setupHtml = `<!DOCTYPE html>
       white-space: nowrap;
     }
     .toast.show { opacity: 1; }
+    .url-label { font-size: 13px; font-weight: 500; margin-top: 14px; margin-bottom: 4px; }
+    .url-label:first-child { margin-top: 0; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>🔑 Sesame Notice</h1>
+  <div class="header-row">
+    <h1>🔑 Sesame Notice</h1>
+    <a href="/logout" class="logout-link">ログアウト</a>
+  </div>
   <p class="subtitle">鍵の開閉を LINE・Discord に通知するウェブフックサービス</p>
 
   <!-- Step 1: Sesame -->
@@ -172,7 +180,7 @@ export const setupHtml = `<!DOCTYPE html>
 
     <div class="field">
       <label>デバイス UUID</label>
-      <input type="text" id="device-uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;" />
+      <input type="text" id="device-uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;" autocomplete="off" />
     </div>
 
     <hr class="separator" />
@@ -185,7 +193,7 @@ export const setupHtml = `<!DOCTYPE html>
     </p>
     <div class="field">
       <label>Biz JWT トークン <span id="jwt-exp-label" style="font-weight:400;font-size:12px;margin-left:8px;"></span></label>
-      <input type="password" id="biz-jwt-token" placeholder="eyJ..." oninput="onJwtInput(this.value)" />
+      <input type="password" id="biz-jwt-token" placeholder="eyJ..." oninput="onJwtInput(this.value)" autocomplete="one-time-code" />
     </div>
   </div>
 
@@ -249,9 +257,27 @@ export const setupHtml = `<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- Save & Test -->
+  <!-- Step 4: Webhook URL -->
   <div class="card">
-    <h2><span class="step-badge">4</span> 保存・確認</h2>
+    <h2><span class="step-badge">4</span> Webhook URL 登録</h2>
+    <p class="card-desc">以下の URL を各サービスに登録してください。Sesame Biz ダッシュボードと LINE Developers の Webhook URL 欄に設定します。</p>
+
+    <p class="url-label">Sesame Webhook URL</p>
+    <div class="webhook-box">
+      <span id="sesame-webhook-url">読み込み中...</span>
+      <button class="copy-btn" onclick="copyWebhookUrl('sesame-webhook-url')">コピー</button>
+    </div>
+
+    <p class="url-label">LINE Webhook URL</p>
+    <div class="webhook-box">
+      <span id="line-webhook-url">読み込み中...</span>
+      <button class="copy-btn" onclick="copyWebhookUrl('line-webhook-url')">コピー</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Save & Test -->
+  <div class="card">
+    <h2><span class="step-badge">5</span> 保存・確認</h2>
     <p class="card-desc">設定を保存してください。1分ごとに Sesame の履歴を確認し、開閉を検知したら通知します。</p>
 
     <div class="btn-row">
@@ -356,7 +382,23 @@ export const setupHtml = `<!DOCTYPE html>
     }
   }
 
-  // Load current config on page load
+  function copyWebhookUrl(id) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => showToast('コピーしました'));
+  }
+
+  async function loadWebhookUrls() {
+    try {
+      const res = await fetch('/api/webhook-url');
+      const data = await res.json();
+      if (data.sesame_url) document.getElementById('sesame-webhook-url').textContent = data.sesame_url;
+      if (data.line_url) document.getElementById('line-webhook-url').textContent = data.line_url;
+    } catch {
+      document.getElementById('sesame-webhook-url').textContent = '取得に失敗しました';
+      document.getElementById('line-webhook-url').textContent = '取得に失敗しました';
+    }
+  }
+
   (async () => {
     const res = await fetch('/api/config');
     const cfg = await res.json();
@@ -376,6 +418,8 @@ export const setupHtml = `<!DOCTYPE html>
       document.getElementById('line-target-field').style.display = 'block';
       if (cfg.line_target_type === 'group') selectLineType('group');
     }
+
+    loadWebhookUrls();
   })();
 </script>
 </body>

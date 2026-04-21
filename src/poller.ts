@@ -1,9 +1,12 @@
 import type { Env, HistoryEntry, LockState } from "./types";
 import { LOCK_TYPES, UNLOCK_TYPES } from "./types";
-import { getSettings, updateSettings } from "./db";
+import { getAllSettings, updateSettings } from "./db";
 import { notifyDiscord } from "./notifiers/discord";
 import { notifyLine } from "./notifiers/line";
 import { fetchHistoryViaBizWebSocket } from "./bizWebSocket";
+import type { Settings } from "./schema";
+
+const LOGIN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 function stateFromType(type: number): LockState | null {
   if (LOCK_TYPES.has(type)) return "locked";
@@ -20,10 +23,7 @@ function buildMessage(state: LockState, timestampMs: number): string {
     : `🔓 鍵が開きました (${time})`;
 }
 
-async function sendNotifications(
-  settings: Awaited<ReturnType<typeof getSettings>>,
-  message: string
-): Promise<void> {
+async function sendNotifications(settings: Settings, message: string): Promise<void> {
   await Promise.allSettled([
     settings.discord_webhook_url
       ? notifyDiscord(settings.discord_webhook_url, message)
@@ -35,6 +35,7 @@ async function sendNotifications(
 }
 
 export type PollDebug = {
+  userId: string;
   method: "biz_websocket" | null;
   error?: string;
   skipped?: string;
@@ -46,49 +47,72 @@ export type PollDebug = {
   rawMessages?: unknown[];
 };
 
-export async function pollHistory(env: Env): Promise<PollDebug> {
-  const settings = await getSettings(env.DB);
-  const debug: PollDebug = { method: null };
+async function pollHistoryForUser(env: Env, userSettings: Settings): Promise<PollDebug> {
+  const debug: PollDebug = { userId: userSettings.user_id, method: null };
 
-  if (!settings.device_uuid) {
+  // Login expiry check (only enforce if user has logged in at least once)
+  if (userSettings.last_login_at) {
+    const loginAge = Date.now() - new Date(userSettings.last_login_at).getTime();
+    if (loginAge > LOGIN_EXPIRY_MS) {
+      if (!userSettings.last_warning_sent_at) {
+        const msg =
+          "⚠️ 30日以上ログインがないため通知を停止しています。管理画面にアクセスしてログインすると再開します。";
+        await sendNotifications(userSettings, msg);
+        await updateSettings(env.DB, userSettings.user_id, {
+          last_warning_sent_at: new Date().toISOString(),
+        });
+      }
+      debug.skipped = "login expired";
+      return debug;
+    }
+  }
+
+  if (!userSettings.device_uuid) {
     debug.skipped = "device_uuid not configured";
-    console.log(debug.skipped);
     return debug;
   }
 
-  let entries: HistoryEntry[];
-
-  if (!settings.biz_jwt_token) {
+  if (!userSettings.biz_jwt_token) {
     debug.skipped = "biz_jwt_token not configured";
-    console.log(debug.skipped);
     return debug;
   }
 
   debug.method = "biz_websocket";
+  let entries: HistoryEntry[];
+
   try {
     const result = await fetchHistoryViaBizWebSocket(
-      settings.biz_jwt_token,
-      settings.device_uuid
+      userSettings.biz_jwt_token,
+      userSettings.device_uuid
     );
     entries = result.entries;
     debug.rawMessages = result.rawMessages;
   } catch (err) {
     debug.error = String(err);
-    console.error("Biz WebSocket failed:", err);
+    console.error(`Biz WebSocket failed for user ${userSettings.user_id}:`, err);
+
+    if (!userSettings.last_warning_sent_at) {
+      const msg =
+        "⚠️ 鍵の履歴取得に失敗しました。Biz JWT Token が無効または期限切れの可能性があります。管理画面で設定を確認してください。";
+      await sendNotifications(userSettings, msg);
+      await updateSettings(env.DB, userSettings.user_id, {
+        last_warning_sent_at: new Date().toISOString(),
+      });
+    }
     return debug;
   }
 
   debug.entriesFetched = entries.length;
   if (!entries.length) return debug;
 
-  const lastTs = settings.last_timestamp ?? 0;
+  const lastTs = userSettings.last_timestamp ?? 0;
   debug.lastTimestamp = lastTs;
 
   if (lastTs === 0) {
     const latest = Math.max(...entries.map((e) => e.timeStamp));
-    await updateSettings(env.DB, { last_timestamp: latest });
+    await updateSettings(env.DB, userSettings.user_id, { last_timestamp: latest });
     debug.firstRun = true;
-    console.log("First poll: initialized last_timestamp to", latest);
+    console.log(`First poll for user ${userSettings.user_id}: initialized last_timestamp to`, latest);
     return debug;
   }
 
@@ -108,15 +132,20 @@ export async function pollHistory(env: Env): Promise<PollDebug> {
   for (const entry of newEntries) {
     const state = stateFromType(entry.type);
     if (state) {
-      await sendNotifications(settings, buildMessage(state, entry.timeStamp));
-      console.log(`Notified: ${state} (type=${entry.type}, ts=${entry.timeStamp})`);
+      await sendNotifications(userSettings, buildMessage(state, entry.timeStamp));
+      console.log(`Notified user ${userSettings.user_id}: ${state} (type=${entry.type}, ts=${entry.timeStamp})`);
       notified++;
     }
   }
   debug.notified = notified;
 
   const latestTs = Math.max(...newEntries.map((e) => e.timeStamp));
-  await updateSettings(env.DB, { last_timestamp: latestTs });
+  await updateSettings(env.DB, userSettings.user_id, { last_timestamp: latestTs });
 
   return debug;
+}
+
+export async function pollHistory(env: Env): Promise<PollDebug[]> {
+  const allSettings = await getAllSettings(env.DB);
+  return Promise.all(allSettings.map((s) => pollHistoryForUser(env, s)));
 }

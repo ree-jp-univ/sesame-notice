@@ -39,8 +39,9 @@ async function verifyLineSignature(
   return expected === signature;
 }
 
-lineWebhookRoute.post("/", async (c) => {
-  const settings = await getSettings(c.env.DB);
+lineWebhookRoute.post("/:userId", async (c) => {
+  const userId = c.req.param("userId");
+  const settings = await getSettings(c.env.DB, userId);
   const rawBody = await c.req.text();
 
   if (settings.line_channel_secret) {
@@ -67,7 +68,7 @@ lineWebhookRoute.post("/", async (c) => {
       source.userId &&
       !settings.line_target_id
     ) {
-      await updateSettings(c.env.DB, {
+      await updateSettings(c.env.DB, userId, {
         line_target_id: source.userId,
         line_target_type: "user",
       });
@@ -79,7 +80,7 @@ lineWebhookRoute.post("/", async (c) => {
       source.type === "group" &&
       source.groupId
     ) {
-      await updateSettings(c.env.DB, {
+      await updateSettings(c.env.DB, userId, {
         line_target_id: source.groupId,
         line_target_type: "group",
       });

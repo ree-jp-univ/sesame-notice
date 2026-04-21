@@ -1,5 +1,6 @@
 export type Env = {
   DB: D1Database;
+  SERVER_SECRET: string;
 };
 
 export type LockState = "locked" | "unlocked";

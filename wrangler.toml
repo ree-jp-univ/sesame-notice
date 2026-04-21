@@ -9,6 +9,11 @@ crons = [
   "* 0-14 * * *"   # JST 9:00-23:00 (UTC 0:00-13:00)
 ]
 
+[[routes]]
+pattern = "sesame.reesuke.com"
+zone_name = "reesuke.com"
+custom_domain = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "sesame-notice"
