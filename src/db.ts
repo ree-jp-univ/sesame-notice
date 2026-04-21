@@ -8,7 +8,6 @@ function db(d1: D1Database) {
 
 const fallback: Settings = {
   id: 1,
-  sesame_api_key: null,
   device_uuid: null,
   line_token: null,
   line_channel_secret: null,
@@ -18,6 +17,7 @@ const fallback: Settings = {
   last_state: null,
   last_timestamp: null,
   updated_at: null,
+  biz_jwt_token: null,
 };
 
 export async function getSettings(d1: D1Database): Promise<Settings> {

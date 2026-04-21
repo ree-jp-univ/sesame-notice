@@ -4,6 +4,7 @@ import type { Settings } from "../schema";
 import { getSettings, updateSettings } from "../db";
 import { notifyDiscord } from "../notifiers/discord";
 import { notifyLine } from "../notifiers/line";
+import { bizRequest } from "../bizWebSocket";
 
 export const apiRoute = new Hono<{ Bindings: Env }>();
 
@@ -11,7 +12,6 @@ export const apiRoute = new Hono<{ Bindings: Env }>();
 apiRoute.get("/config", async (c) => {
   const s = await getSettings(c.env.DB);
   return c.json({
-    sesame_api_key: s.sesame_api_key ? "****" : null,
     device_uuid: s.device_uuid,
     line_token: s.line_token ? "****" : null,
     line_channel_secret: s.line_channel_secret ? "****" : null,
@@ -19,6 +19,7 @@ apiRoute.get("/config", async (c) => {
     line_target_type: s.line_target_type,
     discord_webhook_url: s.discord_webhook_url,
     last_state: s.last_state,
+    biz_jwt_token: s.biz_jwt_token ? s.biz_jwt_token.slice(0, 20) + "..." : null,
   });
 });
 
@@ -27,11 +28,11 @@ apiRoute.post("/config", async (c) => {
   const body = await c.req.json<Partial<Settings>>();
 
   const allowed: (keyof Settings)[] = [
-    "sesame_api_key",
     "device_uuid",
     "line_token",
     "line_channel_secret",
     "discord_webhook_url",
+    "biz_jwt_token",
   ];
 
   const patch: Partial<Settings> = {};
@@ -45,28 +46,15 @@ apiRoute.post("/config", async (c) => {
   return c.json({ ok: true });
 });
 
-// GET /api/sesame/devices — proxy Sesame API to list devices
-apiRoute.get("/sesame/devices", async (c) => {
+
+// GET /api/biz/devices — list devices in Biz account via WebSocket
+apiRoute.get("/biz/devices", async (c) => {
   const s = await getSettings(c.env.DB);
-  if (!s.sesame_api_key) {
-    return c.json({ error: "Sesame API key not configured" }, 400);
+  if (!s.biz_jwt_token) {
+    return c.json({ error: "biz_jwt_token not configured" }, 400);
   }
-
-  const res = await fetch("https://app.candyhouse.co/api/sesame2", {
-    headers: { "x-api-key": s.sesame_api_key },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error(`Sesame API error: ${res.status}`, body); 
-    return c.json(
-      { error: `Sesame API error: ${res.status}`, detail: body },
-      502
-    );
-  }
-
-  const data = await res.json();
-  return c.json(data);
+  const result = await bizRequest(s.biz_jwt_token, "biz3ManageDevice");
+  return c.json(result);
 });
 
 // POST /api/test — send a test notification

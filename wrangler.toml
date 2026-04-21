@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [triggers]
 crons = [
-  "*/30 23 * * *",    # JST 8:xx (UTC 23:00-23:40)
-  "*/30 0-13 * * *"   # JST 9:00-22:40 (UTC 0:00-13:40)
+  "* 23 * * *",    # JST 8:xx (UTC 23:00-00:00)
+  "* 0-14 * * *"   # JST 9:00-23:00 (UTC 0:00-13:00)
 ]
 
 [[d1_databases]]

@@ -166,17 +166,26 @@ export const setupHtml = `<!DOCTYPE html>
   <div class="card">
     <h2><span class="step-badge">1</span> Sesame 設定</h2>
     <p class="card-desc">
-      CANDY HOUSE ダッシュボードで発行した API キーと、Sesame アプリで確認できるデバイス UUID を入力してください。<br>
+      デバイス UUID を入力してください。履歴の取得方法は下の「Biz JWT トークン」か「API キー」いずれかを設定します。<br>
       <small style="color:#6e6e73;">UUID: Sesame アプリ → デバイス → 右上メニュー → デバイス情報</small>
     </p>
 
     <div class="field">
-      <label>Sesame API Key</label>
-      <input type="password" id="sesame-api-key" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
-    </div>
-    <div class="field">
       <label>デバイス UUID</label>
       <input type="text" id="device-uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;" />
+    </div>
+
+    <hr class="separator" />
+
+    <h2 style="font-size:15px;margin-bottom:4px;">🔑 Biz JWT トークン <span style="font-size:13px;font-weight:400;color:#0071e3;">推奨（レート制限なし）</span></h2>
+    <p class="card-desc">
+      CANDY HOUSE Biz ダッシュボード（<a href="https://biz.candyhouse.co" target="_blank" style="color:#0071e3;">biz.candyhouse.co</a>）にログイン後、
+      ブラウザの開発者ツール（F12）→ Console で以下を実行してトークンをコピーしてください：<br>
+      <code style="display:block;background:#f5f5f7;padding:8px 10px;border-radius:8px;margin-top:8px;font-size:12px;word-break:break-all;">Object.entries(localStorage).find(([k]) => k.includes('CognitoIdentityServiceProvider') && k.endsWith('.idToken'))?.[1]</code>
+    </p>
+    <div class="field">
+      <label>Biz JWT トークン <span id="jwt-exp-label" style="font-weight:400;font-size:12px;margin-left:8px;"></span></label>
+      <input type="password" id="biz-jwt-token" placeholder="eyJ..." oninput="onJwtInput(this.value)" />
     </div>
   </div>
 
@@ -258,6 +267,22 @@ export const setupHtml = `<!DOCTYPE html>
   let lineType = 'user';
   let linePollingTimer = null;
 
+  function onJwtInput(value) {
+    const label = document.getElementById('jwt-exp-label');
+    if (!value) { label.textContent = ''; return; }
+    try {
+      const payload = JSON.parse(atob(value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload.exp) {
+        const d = new Date(payload.exp * 1000);
+        const daysLeft = Math.ceil((payload.exp * 1000 - Date.now()) / 86400000);
+        label.textContent = daysLeft > 0
+          ? '有効期限: ' + d.toLocaleDateString('ja-JP') + ' (残り ' + daysLeft + '日)'
+          : '⚠️ 期限切れ: ' + d.toLocaleDateString('ja-JP');
+        label.style.color = daysLeft > 30 ? '#065f46' : daysLeft > 0 ? '#92400e' : '#991b1b';
+      }
+    } catch { label.textContent = ''; }
+  }
+
   function showToast(msg, duration = 2500) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -301,11 +326,11 @@ export const setupHtml = `<!DOCTYPE html>
 
   async function saveConfig() {
     const payload = {
-      sesame_api_key: document.getElementById('sesame-api-key').value.trim() || undefined,
       device_uuid: document.getElementById('device-uuid').value.trim() || undefined,
       line_token: document.getElementById('line-token').value.trim() || undefined,
       line_channel_secret: document.getElementById('line-secret').value.trim() || undefined,
       discord_webhook_url: document.getElementById('discord-url').value.trim() || undefined,
+      biz_jwt_token: document.getElementById('biz-jwt-token').value.trim() || undefined,
     };
 
     const res = await fetch('/api/config', {
@@ -340,6 +365,11 @@ export const setupHtml = `<!DOCTYPE html>
     }
     if (cfg.discord_webhook_url) {
       document.getElementById('discord-url').value = cfg.discord_webhook_url;
+    }
+    if (cfg.biz_jwt_token) {
+      const label = document.getElementById('jwt-exp-label');
+      label.textContent = '設定済み（変更する場合のみ入力）';
+      label.style.color = '#065f46';
     }
     if (cfg.line_target_id) {
       document.getElementById('line-target-id').value = cfg.line_target_id;
